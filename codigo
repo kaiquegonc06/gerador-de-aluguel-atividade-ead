@@ -1,0 +1,111 @@
+# Código Python para gerar um orçamento de aluguel.
+# Calcula o aluguel mensal, inclui parcelas do contrato (até 5x) e gera um CSV com as 12 parcelas do orçamento.
+
+import csv
+from pathlib import Path
+
+BASE_PRICES = {
+    "apartamento": 700.0,
+    "casa": 900.0,
+    "estudio": 1200.0
+}
+
+CONTRACT_TOTAL = 2000.0  # valor do contrato imobiliário
+CONTRACT_MAX_INSTALLMENTS = 5
+
+def calculate_monthly_rent(tipo, quartos=1, vagas=0, possui_criancas=True):
+    """
+    Calcula o aluguel mensal base com acréscimos e descontos.
+    - tipo: 'apartamento', 'casa' ou 'estudio'
+    - quartos: número de quartos (inteiro >=1)
+    - vagas: número de vagas solicitadas (inteiro >=0)
+    - possui_criancas: True se houver crianças; afeta desconto para apartamentos
+    Retorna: aluguel_mensal (float)
+    """
+    tipo = tipo.lower()
+    if tipo not in BASE_PRICES:
+        raise ValueError("Tipo inválido. Use 'apartamento', 'casa' ou 'estudio'.")
+    
+    aluguel = BASE_PRICES[tipo]
+    
+    # Acréscimos por número de quartos
+    if tipo == "apartamento" and quartos >= 2:
+        aluguel += 200.0  # + R$200 para 2 quartos (ou mais)
+    if tipo == "casa" and quartos >= 2:
+        aluguel += 250.0  # + R$250 para 2 quartos (ou mais)
+    
+    # Vagas de garagem / estacionamento
+    if tipo in ("apartamento", "casa"):
+        # valor fixo R$300 por vaga (o enunciado diz "para incluir a vaga... valor acrescentado é R$300")
+        aluguel += 300.0 * vagas
+    else:  # estudio
+        # Estúdio: 2 vagas por R$250, vagas extras R$60 cada
+        if vagas > 0:
+            # Se pedirem 1 vaga, cobramos proporcionalmente: cobraremos como 1 vaga extra a R$60 (o enunciado exige 2 vagas por 250)
+            # Implementação simples: para 1 ou 2 vagas cobramos R$250 (até 2 vagas custam R$250); a partir da 3ª, cada +60
+            if vagas <= 2:
+                aluguel += 250.0
+            else:
+                aluguel += 250.0 + 60.0 * (vagas - 2)
+    
+    # Desconto de 5% para apartamentos sem crianças
+    if tipo == "apartamento" and not possui_criancas:
+        aluguel *= 0.95
+    
+    # Arredondar para 2 casas decimais
+    return round(aluguel, 2)
+
+def generate_budget_csv(tipo, quartos=1, vagas=0, possui_criancas=True, contrato_parcelas=1, filename="C:\Users\KaiqueUwU\Downloads\orcamento_12_parcelas.csv"):
+    """
+    Gera um CSV com 12 meses mostrando: mês, aluguel base, parcela do contrato (se aplicável), total no mês.
+    - contrato_parcelas: número de parcelas do contrato (1 a 5)
+    Retorna o dicionário resumo com valores calculados.
+    """
+    if contrato_parcelas < 1:
+        contrato_parcelas = 1
+    if contrato_parcelas > CONTRACT_MAX_INSTALLMENTS:
+        contrato_parcelas = CONTRACT_MAX_INSTALLMENTS
+    
+    aluguel = calculate_monthly_rent(tipo, quartos, vagas, possui_criancas)
+    parcela_contrato = round(CONTRACT_TOTAL / contrato_parcelas, 2)
+    
+    # Monta as 12 parcelas do orçamento: contrato é cobrado apenas nos primeiros 'contrato_parcelas' meses.
+    rows = []
+    for mes in range(1, 13):
+        contrato_mes = parcela_contrato if mes <= contrato_parcelas else 0.0
+        total_mes = round(aluguel + contrato_mes, 2)
+        rows.append({
+            "Mes": mes,
+            "AluguelMensal": f"{aluguel:.2f}",
+            "ParcelaContrato": f"{contrato_mes:.2f}",
+            "TotalMes": f"{total_mes:.2f}"
+        })
+    
+    # Salva CSV
+    path = Path(filename)
+    with path.open("w", newline='', encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["Mes", "AluguelMensal", "ParcelaContrato", "TotalMes"])
+        writer.writeheader()
+        writer.writerows(rows)
+    
+    resumo = {
+        "tipo": tipo,
+        "quartos": quartos,
+        "vagas": vagas,
+        "possui_criancas": possui_criancas,
+        "aluguel_mensal": aluguel,
+        "contrato_total": CONTRACT_TOTAL,
+        "contrato_parcelas": contrato_parcelas,
+        "parcela_contrato_valor": parcela_contrato,
+        "csv_path": str(path.resolve())
+    }
+    return resumo
+
+# --- Exemplo de uso ---
+if __name__ == "__main__":
+    # Exemplo: apartamento, 2 quartos, 1 vaga, sem crianças, contrato em 5x
+    resumo_exemplo = generate_budget_csv("apartamento", quartos=2, vagas=1, possui_criancas=False, contrato_parcelas=5)
+    print("Resumo do orçamento gerado:")
+    for k, v in resumo_exemplo.items():
+        print(f"{k}: {v}")
+    print("\nCSV salvo em:", resumo_exemplo["csv_path"])
